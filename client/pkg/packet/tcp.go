@@ -56,7 +56,7 @@ func to4byte(addr string) [4]byte {
 	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
 }
 
-func (tcp *TCPHeader) MarshalTCP(seq, ack uint32, flags []string) []byte {
+func (tcp *TCPHeader) MarshalTCP(sourceAddr, destAddr string, seq, ack uint32, flags []string) []byte {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.BigEndian, tcp.SourcePort)
 	binary.Write(buf, binary.BigEndian, tcp.DestinationPort)
@@ -75,9 +75,11 @@ func (tcp *TCPHeader) MarshalTCP(seq, ack uint32, flags []string) []byte {
 
 	bufBytes := buf.Bytes()
 
+	source := to4byte(sourceAddr)
+	dest := to4byte(destAddr)
 	pseudoHeader := []byte{
-		192, 168, 1, 101,
-		192, 168, 1, 100,
+		source[0], source[1], source[2], source[3],
+		dest[0], dest[1], dest[2], dest[3],
 		0,                      // zero
 		6,                      // protocol number (6 == TCP)
 		0, byte(len(bufBytes)), // TCP length (16 bits), not inc pseudo header

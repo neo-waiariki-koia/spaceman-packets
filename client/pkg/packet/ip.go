@@ -40,11 +40,14 @@ func (ih *IPHeader) validateTcpPacket() bool {
 func (ih *IPHeader) MarshalIP() []byte {
 	buf := new(bytes.Buffer)
 
+	sourceAddr := to4byte(ih.sAddr)
+	destAddr := to4byte(ih.dAddr)
+
 	binary.Write(buf, binary.BigEndian, []byte{69, 0, 0, 40})   // Version, IHL, Type of Service | Total Length
 	binary.Write(buf, binary.BigEndian, []byte{141, 245, 0, 0}) // Identification | Flags, Fragment Offset
 	binary.Write(buf, binary.BigEndian, []byte{64, 6, 0, 0})    // TTL, Protocol | Header Checksum
-	binary.Write(buf, binary.BigEndian, []byte{192, 168, 1, 101})
-	binary.Write(buf, binary.BigEndian, []byte{192, 168, 1, 100})
+	binary.Write(buf, binary.BigEndian, sourceAddr)
+	binary.Write(buf, binary.BigEndian, destAddr)
 
 	bufBytes := buf.Bytes()
 

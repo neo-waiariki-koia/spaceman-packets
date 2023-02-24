@@ -19,16 +19,16 @@ func (ip *IPPacket) createPacket() []byte {
 }
 
 func (ip *IPPacket) buildTCPPacket(seq, ack uint32, flags []string, data []byte) []byte {
-	tcpHeader := ip.TCPHeader.MarshalTCP(seq, ack, flags)
+	tcpHeader := ip.TCPHeader.MarshalTCP(ip.sAddr, ip.dAddr, seq, ack, flags)
 
 	return tcpHeader
 }
 
-func SendPacketNoSocket(remoteHost string, destPort uint16, data []byte) {
+func SendPacketNoSocket(remoteHost string, destPort, srcPort uint16, data []byte) {
 	localAddr := interfaceAddress("en0")
 	laddr := strings.Split(localAddr.String(), "/")[0] // Clean addresses like 192.168.1.30/24
 
-	ipPacket := NewIPPacket(remoteHost, destPort, laddr, 25566, data)
+	ipPacket := NewIPPacket(remoteHost, destPort, laddr, srcPort, data)
 
 	packet := ipPacket.createPacket()
 
@@ -57,6 +57,7 @@ func SendPacketNoSocket(remoteHost string, destPort uint16, data []byte) {
 }
 
 func sendSyn(raddr string, port uint16, packet []byte) time.Time {
+	fmt.Printf("Sending to %s:%d\n", raddr, port)
 	conn, err := net.Dial("ip4:tcp", raddr)
 	if err != nil {
 		log.Fatalf("Dial: %s\n", err)
@@ -91,6 +92,7 @@ func receiveSynAck(localAddress, remoteAddress string) time.Time {
 		log.Fatalf("ListenIP: %s\n", err)
 	}
 
+	fmt.Println("Ready to receive")
 	var receiveTime time.Time
 	for {
 		buf := make([]byte, 1024)
@@ -99,14 +101,11 @@ func receiveSynAck(localAddress, remoteAddress string) time.Time {
 			log.Fatalf("ReadFrom: %s\n", err)
 		}
 
-		fmt.Println("HEREo")
 		if raddr.String() != remoteAddress {
-			fmt.Println("HERE1")
 			// this is not the packet we are looking for
 			continue
 		}
 
-		fmt.Println("HERE2")
 		ipData := buf[14:]
 		ipHeader := UnmarshalIP(ipData)
 		fmt.Printf("%v\n", ipHeader)
