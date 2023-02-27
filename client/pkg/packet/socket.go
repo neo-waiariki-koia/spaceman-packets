@@ -3,6 +3,7 @@ package packet
 import (
 	"fmt"
 	"log"
+	"os"
 	"syscall"
 	"time"
 )
@@ -48,21 +49,39 @@ func socketReceiveSynAck(localAddress string, localPort int) time.Time {
 		log.Fatal("Socket: ", err)
 	}
 
-	buf := make([]byte, 1024)
-	numRead, _, err := syscall.Recvfrom(fd, buf, 0)
+	err = syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1)
 	if err != nil {
-		log.Fatal("Recvfrom: ", err)
-	}
-	fmt.Printf("% X\n", buf[:numRead])
-
-	ipData := buf[14:]
-	ipHeader := UnmarshalIP(ipData)
-	if validPacket := ipHeader.validateTcpPacket(); !validPacket {
-		log.Fatal("Not a valid TCP Packet")
+		fmt.Fprintf(os.Stderr, "SetsockoptInt error :%s\ns", err.Error())
+		log.Fatal(err)
 	}
 
-	tcpHeader := UnmarshalTCP(ipHeader.Data)
-	fmt.Printf("%v\n", tcpHeader)
+	addr := syscall.SockaddrInet4{
+		Port: int(localPort),
+		Addr: to4byte(localAddress),
+	}
+
+	err = syscall.Bind(fd, &addr)
+	if err != nil {
+		log.Fatal("Bind: ", err)
+	}
+
+	for {
+		buf := make([]byte, 1024)
+		numRead, _, err := syscall.Recvfrom(fd, buf, 0)
+		if err != nil {
+			log.Fatal("Recvfrom: ", err)
+		}
+		fmt.Printf("% X\n", buf[:numRead])
+
+		ipData := buf[14:]
+		ipHeader := UnmarshalIP(ipData)
+		if validPacket := ipHeader.validateTcpPacket(); !validPacket {
+			log.Fatal("Not a valid TCP Packet")
+		}
+
+		tcpHeader := UnmarshalTCP(ipHeader.Data)
+		fmt.Printf("%v\n", tcpHeader)
+	}
 
 	return time.Now()
 }
