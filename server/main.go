@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
-	"time"
 
 	"server/pkg/socket"
 )
@@ -15,7 +15,7 @@ const (
 )
 
 func main() {
-	laddr := "127.0.0.1"
+	laddr := "0.0.0.0"
 	port := 8080
 	socket, err := socket.NewNetSocket(laddr, port)
 	if err != nil {
@@ -29,7 +29,6 @@ func main() {
 		conn, err := socket.Accept()
 		if err != nil {
 			log.Fatal(err)
-
 		}
 		go func() {
 			buffer := make([]byte, 1024)
@@ -38,14 +37,20 @@ func main() {
 				log.Fatal(err)
 			}
 
-			// write data to response
-			time := time.Now().Format(time.ANSIC)
-			responseStr := fmt.Sprintf("socket-server received message: %v. Received time: %v", string(buffer[:]), time)
-			fmt.Println(responseStr)
-			conn.Write([]byte(responseStr))
-
+			log.Print("Writing response")
+			io.WriteString(conn, "HTTP/1.1 200 OK\r\n"+
+				"Content-Type: text/html; charset=utf-8\r\n"+
+				"Content-Length: 20\r\n"+
+				"\r\n"+
+				"<h1>hello world</h1>\r\n")
+			if err != nil {
+				log.Fatal(err)
+			}
 			// close conn
-			conn.Close()
+			err = conn.Close()
+			if err != nil {
+				log.Fatal(err)
+			}
 		}()
 	}
 }
