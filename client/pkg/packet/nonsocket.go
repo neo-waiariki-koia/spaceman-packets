@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
-	"sync"
 	"time"
 )
 
-func (ip *IPPacket) createPacket() []byte {
+func (ip *IPPacket) createSynPacket() []byte {
 	ack := 0
 	seq := 0
 	flags := []string{"syn"}
@@ -19,41 +17,12 @@ func (ip *IPPacket) createPacket() []byte {
 }
 
 func (ip *IPPacket) buildTCPPacket(seq, ack uint32, flags []string, data []byte) []byte {
+	// ipHeader := ip.IPHeader.MarshalIP()
 	tcpHeader := ip.TCPHeader.MarshalTCP(ip.sAddr, ip.dAddr, seq, ack, flags)
 
+	// packet := append(ipHeader, tcpHeader...)
+	// return append(packet, data...)
 	return tcpHeader
-}
-
-func SendPacketNoSocket(remoteHost string, destPort, srcPort uint16, data []byte) {
-	localAddr := interfaceAddress("en0")
-	laddr := strings.Split(localAddr.String(), "/")[0] // Clean addresses like 192.168.1.30/24
-
-	ipPacket := NewIPPacket(remoteHost, destPort, laddr, srcPort, data)
-
-	packet := ipPacket.createPacket()
-
-	var wg sync.WaitGroup
-	wg.Add(1)
-	var receiveTime time.Time
-
-	addrs, err := net.LookupHost(remoteHost)
-	if err != nil {
-		log.Fatalf("Error resolving %s. %s\n", remoteHost, err)
-	}
-	remoteAddr := addrs[0]
-
-	go func() {
-		receiveTime = receiveSynAck(laddr, remoteAddr)
-		wg.Done()
-	}()
-
-	time.Sleep(1 * time.Millisecond)
-
-	sendTime := sendSyn(remoteAddr, destPort, packet)
-
-	wg.Wait()
-
-	fmt.Println(receiveTime.Sub(sendTime))
 }
 
 func sendSyn(raddr string, port uint16, packet []byte) time.Time {
@@ -102,6 +71,7 @@ func receiveSynAck(localAddress, remoteAddress string) time.Time {
 		}
 
 		if raddr.String() != remoteAddress {
+			fmt.Println("Remote addresses are not equal")
 			// this is not the packet we are looking for
 			continue
 		}

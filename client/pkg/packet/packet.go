@@ -10,7 +10,7 @@ type IPPacket struct {
 	TCPHeader
 }
 
-func NewIPPacket(destAddr string, destPort uint16, sourceAddr string, sourcePort uint16, data []byte) *IPPacket {
+func NewIPPacket(destAddr string, destPort uint16, sourceAddr string, sourcePort uint16) *IPPacket {
 	ipHeader := IPHeader{
 		sAddr: sourceAddr,
 		dAddr: destAddr,
@@ -19,7 +19,6 @@ func NewIPPacket(destAddr string, destPort uint16, sourceAddr string, sourcePort
 	tcpHeader := TCPHeader{
 		SourcePort:      sourcePort,
 		DestinationPort: destPort,
-		Data:            data,
 	}
 
 	return &IPPacket{
