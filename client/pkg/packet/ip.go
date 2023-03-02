@@ -3,6 +3,7 @@ package packet
 import (
 	"bytes"
 	"encoding/binary"
+	"net"
 )
 
 type IPHeader struct {
@@ -30,7 +31,17 @@ func UnmarshalIP(data []byte) *IPHeader {
 
 	ipHeader.Data = data[20:]
 
+	ipHeader.sAddr = ipByteToString(ipHeader.SourceAddress)
+	ipHeader.dAddr = ipByteToString(ipHeader.DestinationAddress)
+
 	return &ipHeader
+}
+
+func ipByteToString(ipLong uint32) string {
+	ipByte := make([]byte, 4)
+	binary.BigEndian.PutUint32(ipByte, ipLong)
+	ip := net.IP(ipByte)
+	return ip.String()
 }
 
 func (ih *IPHeader) validateTcpPacket() bool {
