@@ -58,10 +58,10 @@ func (pc *PacketConstructor) buildTCPHeader() []byte {
 	flagsInt := computeTCPFlags(pc.Flags)
 
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.BigEndian, pc.SrcPort)
-	binary.Write(buf, binary.BigEndian, pc.DestPort)
-	binary.Write(buf, binary.BigEndian, pc.Seq)
-	binary.Write(buf, binary.BigEndian, pc.Ack)
+	binary.Write(buf, binary.BigEndian, uint16(pc.SrcPort))
+	binary.Write(buf, binary.BigEndian, uint16(pc.DestPort))
+	binary.Write(buf, binary.BigEndian, uint32(pc.Seq))
+	binary.Write(buf, binary.BigEndian, uint32(pc.Ack))
 
 	mix := uint16(5)<<12 | // top 4 bits //data offset
 		uint16(0)<<9 | // 3 bits

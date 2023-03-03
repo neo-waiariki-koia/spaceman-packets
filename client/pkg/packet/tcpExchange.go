@@ -102,10 +102,10 @@ func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Socket: %s", err)
 	}
 
-	err = syscall.SetsockoptInt(socket, syscall.IPPROTO_IP, syscall.SO_RCVBUF, 56789)
-	if err != nil {
-		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.SetsockoptInt: %s", err)
-	}
+	// err = syscall.SetsockoptInt(socket, syscall.IPPROTO_IP, syscall.SO_RCVBUF, 56789)
+	// if err != nil {
+	// 	return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.SetsockoptInt: %s", err)
+	// }
 
 	addr := &syscall.SockaddrInet4{
 		Port: pe.SrcPort,
