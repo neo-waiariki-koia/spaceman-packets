@@ -3,6 +3,9 @@ package packet
 import (
 	"bytes"
 	"encoding/binary"
+	"log"
+	"strconv"
+	"strings"
 )
 
 type PacketConstructor struct {
@@ -104,6 +107,18 @@ func (pc *PacketConstructor) buildTCPHeader() []byte {
 		tcpHeader = append(tcpHeader, 0)
 	}
 	return tcpHeader
+}
+
+func to4byte(addr string) [4]byte {
+	parts := strings.Split(addr, ".")
+	b0, err := strconv.Atoi(parts[0])
+	if err != nil {
+		log.Fatalf("to4byte: %s (latency works with IPv4 addresses only, but not IPv6!)\n", err)
+	}
+	b1, _ := strconv.Atoi(parts[1])
+	b2, _ := strconv.Atoi(parts[2])
+	b3, _ := strconv.Atoi(parts[3])
+	return [4]byte{byte(b0), byte(b1), byte(b2), byte(b3)}
 }
 
 func computeTCPFlags(flags []string) int {
