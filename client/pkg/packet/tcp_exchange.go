@@ -1,6 +1,3 @@
-//go:build linux && amd64
-// +build linux,amd64
-
 package packet
 
 import (
@@ -11,29 +8,6 @@ import (
 	"syscall"
 	"time"
 )
-
-type IPHeader struct {
-	Version            uint8
-	Protocol           uint8
-	SourceAddress      uint32
-	sAddr              string
-	DestinationAddress uint32
-	dAddr              string
-	Data               []byte
-}
-
-type TCPHeader struct {
-	SourcePort           uint16
-	DestinationPort      uint16
-	SequenceNumber       uint32
-	AcknowlegementNumber uint32
-	DataOffset           uint8
-	Flags                uint8
-	Window               uint16
-	Checksum             uint16 // Kernel will set this if it's 0
-	Urgent               uint16
-	Data                 []byte
-}
 
 type PacketExchange struct {
 	SrcHost  string
@@ -55,55 +29,29 @@ func NewPacketExchange(srcHost string, srcPort int, destHost string, destPort in
 	}
 }
 
+func SendTCPData(destHost string, destPort int, srcHost string, srcPort int, data []byte) []byte {
+	checkSum := 0
+	send := NewPacketExchange(srcHost, srcPort, destHost, destPort, checkSum, data)
+
+	for i := 0; i < 20; i++ {
+		send.tcpHandshake()
+		time.Sleep(6 * time.Second)
+	}
+
+	return []byte{}
+}
+
 func (pe *PacketExchange) tcpHandshake() (int, int) {
-	fmt.Println("Starting handshake")
-	ack := 0
-	sequence := 0
 	flags := []string{"syn"}
 	emptyData := make([]byte, 0)
 
-Repeat:
-	fmt.Println("Building syn packet")
-	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, ack, flags, pe.Checksum, emptyData)
-	err := pe.sendPacket(packet)
-	if err != nil {
-		log.Fatal(err)
+	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, 0, 0, flags, 0, emptyData)
+
+	if err := pe.sendPacket(packet); err != nil {
+		log.Fatalf("error sending packet: %v", err)
 	}
 
-	fmt.Println("Receiving response")
-	responseSequence, _, err := pe.receiveResponse()
-	if err != nil {
-		fmt.Println(err)
-		fmt.Println("Reperating building and send of syn packet")
-		goto Repeat
-	}
-
-	ack = responseSequence + 1
-	sequence += 1
-	flags = []string{"ack"}
-	fmt.Println("Building ack packet")
-	packet = BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, ack, flags, pe.Checksum, emptyData)
-	err = pe.sendPacket(packet)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return sequence, responseSequence
-}
-
-func (pe *PacketExchange) tcpPushData(sequence, ack int) []byte {
-	flags := []string{"psh", "ack"}
-	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, ack, flags, pe.Checksum, pe.Data)
-	err := pe.sendPacket(packet)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, response, err := pe.receiveResponse()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return response
+	return 0, 0
 }
 
 func (pe *PacketExchange) sendPacket(packet []byte) error {
@@ -128,97 +76,97 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 		return fmt.Errorf("sendPacket -> syscall.Sendto: %s", err)
 	}
 
-	err = syscall.Close(socket)
-	if err != nil {
-		return fmt.Errorf("sendPacket -> syscall.Close: %s", err)
-	}
+	// err = syscall.Close(socket)
+	// if err != nil {
+	// 	return fmt.Errorf("sendPacket -> syscall.Close: %s", err)
+	// }
 
 	return nil
 }
 
-func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
-	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
-	if err != nil {
-		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Socket: %s", err)
-	}
+// func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
+// 	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
+// 	if err != nil {
+// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Socket: %s", err)
+// 	}
 
-	err = syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 56789)
-	if err != nil {
-		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.SetsockoptInt: %s", err)
-	}
+// 	err = syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 56789)
+// 	if err != nil {
+// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.SetsockoptInt: %s", err)
+// 	}
 
-	// addr := &syscall.SockaddrInet4{
-	// 	Port: pe.SrcPort,
-	// 	Addr: to4byte(pe.SrcHost),
-	// }
-	// err = syscall.Bind(socket, addr)
-	// if err != nil {
-	// 	return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Bind: %s", err)
-	// }
+// 	addr := &syscall.SockaddrInet4{
+// 		Port: pe.SrcPort,
+// 		Addr: to4byte(pe.SrcHost),
+// 	}
+// 	err = syscall.Bind(socket, addr)
+// 	if err != nil {
+// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Bind: %s", err)
+// 	}
 
-	var tcpHeader *TCPHeader
-	seqDataChan := make(chan map[string]struct {
-		SeqNum int
-		Data   []byte
-	}, 1)
+// 	var tcpHeader *TCPHeader
+// 	seqDataChan := make(chan map[string]struct {
+// 		SeqNum int
+// 		Data   []byte
+// 	}, 1)
 
-	go func() {
-		for {
-			buf := make([]byte, 1024)
-			numRead, _, err := syscall.Recvfrom(socket, buf, 0)
-			if err != nil {
-				log.Fatalf("receiveResponse -> syscall.Recvfrom: %s", err)
-			}
+// 	go func() {
+// 		for {
+// 			buf := make([]byte, 1024)
+// 			numRead, _, err := syscall.Recvfrom(socket, buf, 0)
+// 			if err != nil {
+// 				log.Fatalf("receiveResponse -> syscall.Recvfrom: %s", err)
+// 			}
 
-			fmt.Printf("% X\n", buf[numRead:])
+// 			fmt.Printf("% X\n", buf[numRead:])
 
-			ipData := buf[:]
-			ipHeader := unmarshalIPHeader(ipData)
-			if validPacket := ipHeader.validateTcpPacket(); !validPacket {
-				log.Fatal("receiveResponse -> `Not a valid TCP packet")
-			}
+// 			ipData := buf[:]
+// 			ipHeader := unmarshalIPHeader(ipData)
+// 			if validPacket := ipHeader.validateTcpPacket(); !validPacket {
+// 				log.Fatal("receiveResponse -> `Not a valid TCP packet")
+// 			}
 
-			tcpHeader = unmarshalTCPHeader(ipHeader.Data)
+// 			tcpHeader = unmarshalTCPHeader(ipHeader.Data)
 
-			sourceAddress := ipByteToString(ipHeader.SourceAddress)
-			fmt.Printf("Source Address: %s\n", ipHeader.sAddr)
-			fmt.Printf("Source Port: %v\n", tcpHeader.SourcePort)
+// 			sourceAddress := ipByteToString(ipHeader.SourceAddress)
+// 			fmt.Printf("Source Address: %s\n", ipHeader.sAddr)
+// 			fmt.Printf("Source Port: %v\n", tcpHeader.SourcePort)
 
-			fmt.Printf("Destination Address: %s\n", ipHeader.dAddr)
-			fmt.Printf("Destination Port: %v\n", tcpHeader.DestinationPort)
-			fmt.Printf("Data: %v\n", tcpHeader.Data)
+// 			fmt.Printf("Destination Address: %s\n", ipHeader.dAddr)
+// 			fmt.Printf("Destination Port: %v\n", tcpHeader.DestinationPort)
+// 			fmt.Printf("Data: %v\n", tcpHeader.Data)
 
-			if validated := pe.validateSource(sourceAddress, int(tcpHeader.DestinationPort)); validated {
-				seqDataChan <- map[string]struct {
-					SeqNum int
-					Data   []byte
-				}{
-					"Result": {
-						SeqNum: int(tcpHeader.SequenceNumber),
-						Data:   tcpHeader.Data,
-					},
-				}
-			}
-		}
-	}()
+// 			if validated := pe.validateSource(sourceAddress, int(tcpHeader.DestinationPort)); validated {
+// 				seqDataChan <- map[string]struct {
+// 					SeqNum int
+// 					Data   []byte
+// 				}{
+// 					"Result": {
+// 						SeqNum: int(tcpHeader.SequenceNumber),
+// 						Data:   tcpHeader.Data,
+// 					},
+// 				}
+// 			}
+// 		}
+// 	}()
 
-	var seqNum int
-	var data []byte
-	ticker := time.NewTicker(30 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			return 0, []byte{}, fmt.Errorf("Timed out waiting for function")
+// 	var seqNum int
+// 	var data []byte
+// 	ticker := time.NewTicker(30 * time.Second)
+// 	for {
+// 		select {
+// 		case <-ticker.C:
+// 			return 0, []byte{}, fmt.Errorf("Timed out waiting for function")
 
-		case resp := <-seqDataChan:
-			result := resp["Result"]
-			seqNum = result.SeqNum
-			data = result.Data
+// 		case resp := <-seqDataChan:
+// 			result := resp["Result"]
+// 			seqNum = result.SeqNum
+// 			data = result.Data
 
-			return seqNum, data, nil
-		}
-	}
-}
+// 			return seqNum, data, nil
+// 		}
+// 	}
+// }
 
 func (pe *PacketExchange) validateSource(sourceAddress string, destinationPort int) bool {
 	if sourceAddress == pe.DestHost {
@@ -278,17 +226,7 @@ func unmarshalTCPHeader(data []byte) *TCPHeader {
 	return &tcp
 }
 
-func SendTCPData(destHost string, destPort int, srcHost string, srcPort int, data []byte) []byte {
-	checkSum := 0
-	send := NewPacketExchange(srcHost, srcPort, destHost, destPort, checkSum, data)
-
-	seq, ack := send.tcpHandshake()
-	response := send.tcpPushData(seq, ack)
-
-	return response
-}
-
-// NetToHostShort converts a 16-bit integer from network to host byte order, aka "ntohs"
+// // NetToHostShort converts a 16-bit integer from network to host byte order, aka "ntohs"
 func netToHostShort(i uint16) uint16 {
 	data := make([]byte, 2)
 	binary.BigEndian.PutUint16(data, i)
@@ -300,4 +238,16 @@ func netToHostLong(i uint32) uint32 {
 	data := make([]byte, 4)
 	binary.BigEndian.PutUint32(data, i)
 	return binary.LittleEndian.Uint32(data)
+}
+
+func htons(i uint16) uint16 {
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint16(data, i)
+	return binary.LittleEndian.Uint16(data)
+}
+
+func htonl(i uint32) uint16 {
+	data := make([]byte, 2)
+	binary.LittleEndian.PutUint32(data, i)
+	return binary.LittleEndian.Uint16(data)
 }

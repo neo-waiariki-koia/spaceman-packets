@@ -22,36 +22,37 @@ type PacketConstructor struct {
 	Data     []byte
 }
 
-func getMacAddr() (*net.Interface, error) {
-	iface, err := net.InterfaceByName("eth0")
-	if err != nil {
-		log.Fatal("get link by name:", err)
-	}
-
-	fmt.Println(iface.HardwareAddr)
-
-	return iface, nil
+type IPHeader struct {
+	Version            uint8
+	Protocol           uint8
+	SourceAddress      uint32
+	sAddr              string
+	DestinationAddress uint32
+	dAddr              string
+	Data               []byte
 }
 
-func buildEthernetHeader() []byte {
-	ipv4 := [2]byte{0x08, 0x00}
+type TCPHeader struct {
+	SourcePort           uint16
+	DestinationPort      uint16
+	SequenceNumber       uint32
+	AcknowlegementNumber uint32
+	DataOffset           uint8
+	Flags                uint8
+	Window               uint16
+	Checksum             uint16 // Kernel will set this if it's 0
+	Urgent               uint16
+	Data                 []byte
+}
 
-	src, err := getMacAddr()
-	if err != nil {
-		log.Fatalf("buildEthernetHeader: %s", err)
-	}
+func BuildTCPPacket(destHost string, destPort int, srcHost string, srcPort int, seq int, ack int, flags []string, checksum int, data []byte) []byte {
+	packet := NewPacketConstructor(srcHost, srcPort, destHost, destPort, seq, ack, flags, checksum, data)
 
-	srcMac := src.HardwareAddr
+	//completeTCPPacket := append(buildEthernetHeader(), packet.buildIPHeader()...)
+	completeTCPPacket := append(packet.buildIPHeader(), packet.buildTCPHeader()...)
+	completeTCPPacket = append(completeTCPPacket, data...)
 
-	dstMac := srcMac
-
-	ethHeader := []byte{
-		dstMac[0], dstMac[1], dstMac[2], dstMac[3], dstMac[4], dstMac[5],
-		srcMac[0], srcMac[1], srcMac[2], srcMac[3], srcMac[4], srcMac[5],
-		ipv4[0], ipv4[1], // your custom ethertype
-	}
-
-	return ethHeader
+	return completeTCPPacket
 }
 
 func NewPacketConstructor(srcHost string, srcPort int, destHost string, destPort int, seq int, ack int, flags []string, checksum int, data []byte) *PacketConstructor {
@@ -201,12 +202,34 @@ func calculateChecksum(data []byte) uint16 {
 	return uint16(^sum)
 }
 
-func BuildTCPPacket(destHost string, destPort int, srcHost string, srcPort int, seq int, ack int, flags []string, checksum int, data []byte) []byte {
-	packet := NewPacketConstructor(srcHost, srcPort, destHost, destPort, seq, ack, flags, checksum, data)
+func getMacAddr() (*net.Interface, error) {
+	iface, err := net.InterfaceByName("eth0")
+	if err != nil {
+		log.Fatal("get link by name:", err)
+	}
 
-	completeTCPPacket := append(buildEthernetHeader(), packet.buildIPHeader()...)
-	completeTCPPacket = append(completeTCPPacket, packet.buildTCPHeader()...)
-	completeTCPPacket = append(completeTCPPacket, data...)
+	fmt.Println(iface.HardwareAddr)
 
-	return completeTCPPacket
+	return iface, nil
+}
+
+func buildEthernetHeader() []byte {
+	ipv4 := [2]byte{0x08, 0x00}
+
+	src, err := getMacAddr()
+	if err != nil {
+		log.Fatalf("buildEthernetHeader: %s", err)
+	}
+
+	srcMac := src.HardwareAddr
+
+	dstMac := srcMac
+
+	ethHeader := []byte{
+		dstMac[0], dstMac[1], dstMac[2], dstMac[3], dstMac[4], dstMac[5],
+		srcMac[0], srcMac[1], srcMac[2], srcMac[3], srcMac[4], srcMac[5],
+		ipv4[0], ipv4[1], // your custom ethertype
+	}
+
+	return ethHeader
 }
