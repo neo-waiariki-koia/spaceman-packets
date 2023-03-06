@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"syscall"
+	"time"
 )
 
 type IPHeader struct {
@@ -61,6 +62,7 @@ func (pe *PacketExchange) tcpHandshake() (int, int) {
 	flags := []string{"syn"}
 	emptyData := make([]byte, 0)
 
+Repeat:
 	fmt.Println("Building syn packet")
 	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, ack, flags, pe.Checksum, emptyData)
 	err := pe.sendPacket(packet)
@@ -71,7 +73,9 @@ func (pe *PacketExchange) tcpHandshake() (int, int) {
 	fmt.Println("Receiving response")
 	responseSequence, _, err := pe.receiveResponse()
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println(err)
+		fmt.Println("Reperating building and send of syn packet")
+		goto Repeat
 	}
 
 	ack = responseSequence + 1
@@ -153,37 +157,67 @@ func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
 	// }
 
 	var tcpHeader *TCPHeader
+	seqDataChan := make(chan map[string]struct {
+		SeqNum int
+		Data   []byte
+	}, 1)
+
+	go func() {
+		for {
+			buf := make([]byte, 1024)
+			numRead, _, err := syscall.Recvfrom(socket, buf, 0)
+			if err != nil {
+				log.Fatalf("receiveResponse -> syscall.Recvfrom: %s", err)
+			}
+
+			fmt.Printf("% X\n", buf[numRead:])
+
+			ipData := buf[:]
+			ipHeader := unmarshalIPHeader(ipData)
+			if validPacket := ipHeader.validateTcpPacket(); !validPacket {
+				log.Fatal("receiveResponse -> `Not a valid TCP packet")
+			}
+
+			tcpHeader = unmarshalTCPHeader(ipHeader.Data)
+
+			sourceAddress := ipByteToString(ipHeader.SourceAddress)
+			fmt.Printf("Source Address: %s\n", ipHeader.sAddr)
+			fmt.Printf("Source Port: %v\n", tcpHeader.SourcePort)
+
+			fmt.Printf("Destination Address: %s\n", ipHeader.dAddr)
+			fmt.Printf("Destination Port: %v\n", tcpHeader.DestinationPort)
+			fmt.Printf("Data: %v\n", tcpHeader.Data)
+
+			if validated := pe.validateSource(sourceAddress, int(tcpHeader.DestinationPort)); validated {
+				seqDataChan <- map[string]struct {
+					SeqNum int
+					Data   []byte
+				}{
+					"Result": {
+						SeqNum: int(tcpHeader.SequenceNumber),
+						Data:   tcpHeader.Data,
+					},
+				}
+			}
+		}
+	}()
+
+	var seqNum int
+	var data []byte
+	ticker := time.NewTicker(30 * time.Second)
 	for {
-		buf := make([]byte, 1024)
-		numRead, _, err := syscall.Recvfrom(socket, buf, 0)
-		if err != nil {
-			return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Recvfrom: %s", err)
-		}
+		select {
+		case <-ticker.C:
+			return 0, []byte{}, fmt.Errorf("Timed out waiting for function")
 
-		fmt.Printf("% X\n", buf[numRead:])
+		case resp := <-seqDataChan:
+			result := resp["Result"]
+			seqNum = result.SeqNum
+			data = result.Data
 
-		ipData := buf[:]
-		ipHeader := unmarshalIPHeader(ipData)
-		if validPacket := ipHeader.validateTcpPacket(); !validPacket {
-			return 0, []byte{}, fmt.Errorf("receiveResponse -> `Not a valid TCP packet")
-		}
-
-		tcpHeader = unmarshalTCPHeader(ipHeader.Data)
-
-		sourceAddress := ipByteToString(ipHeader.SourceAddress)
-		fmt.Printf("Source Address: %s\n", ipHeader.sAddr)
-		fmt.Printf("Source Port: %v\n", tcpHeader.SourcePort)
-
-		fmt.Printf("Destination Address: %s\n", ipHeader.dAddr)
-		fmt.Printf("Destination Port: %v\n", tcpHeader.DestinationPort)
-		fmt.Printf("Data: %v\n", tcpHeader.Data)
-
-		if validated := pe.validateSource(sourceAddress, int(tcpHeader.DestinationPort)); validated {
-			break
+			return seqNum, data, nil
 		}
 	}
-
-	return int(tcpHeader.SequenceNumber), tcpHeader.Data, nil
 }
 
 func (pe *PacketExchange) validateSource(sourceAddress string, destinationPort int) bool {
