@@ -1,7 +1,7 @@
 {
     "gopls": {
         "build.buildFlags": [
-            "-tags=linux 386 darwin !cgo"
+            "-tags=linux amd64"
         ]
     }
 }

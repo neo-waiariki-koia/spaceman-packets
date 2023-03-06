@@ -1,3 +1,6 @@
+//go:build linux && amd64
+// +build linux,amd64
+
 package packet
 
 import (
@@ -115,6 +118,7 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 	}
 
 	fmt.Printf("Sending to %v:%v\n", addr.Addr, addr.Port)
+	fmt.Printf("% X\n", packet)
 	err = syscall.Sendto(socket, packet, 0, addr)
 	if err != nil {
 		return fmt.Errorf("sendPacket -> syscall.Sendto: %s", err)
@@ -129,7 +133,7 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 }
 
 func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
-	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_IP)
+	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
 	if err != nil {
 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Socket: %s", err)
 	}

@@ -168,8 +168,7 @@ func calculateChecksum(data []byte) uint16 {
 }
 
 func BuildTCPPacket(destHost string, destPort int, srcHost string, srcPort int, seq int, ack int, flags []string, checksum int, data []byte) []byte {
-	packet := NewPacketConstructor(destHost, destPort, srcHost, srcPort, seq, ack, flags, checksum, data)
-
+	packet := NewPacketConstructor(srcHost, srcPort, destHost, destPort, seq, ack, flags, checksum, data)
 	completeTCPPacket := append(packet.buildIPHeader(), packet.buildTCPHeader()...)
 	completeTCPPacket = append(completeTCPPacket, data...)
 
