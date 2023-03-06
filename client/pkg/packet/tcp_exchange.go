@@ -33,7 +33,7 @@ func SendTCPData(destHost string, destPort int, srcHost string, srcPort int, dat
 	checkSum := 0
 	send := NewPacketExchange(srcHost, srcPort, destHost, destPort, checkSum, data)
 
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 10; i++ {
 		send.tcpHandshake()
 		time.Sleep(6 * time.Second)
 	}
@@ -48,7 +48,11 @@ func (pe *PacketExchange) tcpHandshake() (int, int) {
 	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, 0, 0, flags, 0, emptyData)
 
 	if err := pe.sendPacket(packet); err != nil {
-		log.Fatalf("error sending packet: %v", err)
+		log.Printf("error sending packet: %v", err)
+	}
+
+	if err := pe.receive(); err != nil {
+		log.Printf("error receiving: %v", err)
 	}
 
 	return 0, 0
@@ -59,6 +63,7 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 	if err != nil {
 		return fmt.Errorf("sendPacket -> syscall.Socket: %s", err)
 	}
+
 	err = syscall.SetsockoptInt(socket, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1)
 	if err != nil {
 		return fmt.Errorf("sendPacket -> syscall.SetsockoptInt: %s", err)
@@ -76,9 +81,46 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 		return fmt.Errorf("sendPacket -> syscall.Sendto: %s", err)
 	}
 
-	// err = syscall.Close(socket)
-	// if err != nil {
-	// 	return fmt.Errorf("sendPacket -> syscall.Close: %s", err)
+	err = syscall.Close(socket)
+	if err != nil {
+		return fmt.Errorf("sendPacket -> syscall.Close: %s", err)
+	}
+
+	return nil
+}
+
+func (pe *PacketExchange) receive() error {
+	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
+	if err != nil {
+		return fmt.Errorf("receive -> syscall.Socket: %s", err)
+	}
+
+	// if err := syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 1073741824); err != nil {
+	// 	return fmt.Errorf("receive -> syscall.SetsockoptInt: %s", err)
+	// }
+
+	netIFace, err := net.InterfaceByName("eth0")
+	if err != nil {
+		return fmt.Errorf("receive -> net.InterfaceByName: %s", err)
+	}
+
+	var haddr [8]byte
+	copy(haddr[0:7], netIFace.HardwareAddr[0:7])
+
+	addr := syscall.SockaddrLinklayer{
+		Protocol: syscall.ETH_P_IP,
+		Ifindex:  netIFace.Index,
+		Halen:    uint8(len(netIFace.HardwareAddr)),
+		Addr:     haddr,
+	}
+
+	// probably need to bind to device here instead
+	if err := syscall.Bind(socket, &addr); err != nil {
+		return fmt.Errorf("receive -> syscall.Bind: %s", err)
+	}
+
+	// if err := syscall.SetLsfPromisc("eth0", true); err != nil {
+	// 	return fmt.Errorf("receive -> ")
 	// }
 
 	return nil

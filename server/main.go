@@ -15,7 +15,7 @@ const (
 )
 
 func main() {
-	laddr := "0.0.0.0"
+	laddr := "127.0.0.1"
 	port := 8080
 	socket, err := socket.NewNetSocket(laddr, port)
 	if err != nil {
