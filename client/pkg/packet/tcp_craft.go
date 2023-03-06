@@ -3,7 +3,9 @@ package packet
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"log"
+	"net"
 	"strconv"
 	"strings"
 )
@@ -18,6 +20,38 @@ type PacketConstructor struct {
 	Flags    []string
 	Checksum int
 	Data     []byte
+}
+
+func getMacAddr() (*net.Interface, error) {
+	iface, err := net.InterfaceByName("eth0")
+	if err != nil {
+		log.Fatal("get link by name:", err)
+	}
+
+	fmt.Println(iface.HardwareAddr)
+
+	return iface, nil
+}
+
+func buildEthernetHeader() []byte {
+	ipv4 := [2]byte{0x08, 0x00}
+
+	src, err := getMacAddr()
+	if err != nil {
+		log.Fatalf("buildEthernetHeader: %s", err)
+	}
+
+	srcMac := src.HardwareAddr
+
+	dstMac := srcMac
+
+	ethHeader := []byte{
+		dstMac[0], dstMac[1], dstMac[2], dstMac[3], dstMac[4], dstMac[5],
+		srcMac[0], srcMac[1], srcMac[2], srcMac[3], srcMac[4], srcMac[5],
+		ipv4[0], ipv4[1], // your custom ethertype
+	}
+
+	return ethHeader
 }
 
 func NewPacketConstructor(srcHost string, srcPort int, destHost string, destPort int, seq int, ack int, flags []string, checksum int, data []byte) *PacketConstructor {
@@ -169,7 +203,9 @@ func calculateChecksum(data []byte) uint16 {
 
 func BuildTCPPacket(destHost string, destPort int, srcHost string, srcPort int, seq int, ack int, flags []string, checksum int, data []byte) []byte {
 	packet := NewPacketConstructor(srcHost, srcPort, destHost, destPort, seq, ack, flags, checksum, data)
-	completeTCPPacket := append(packet.buildIPHeader(), packet.buildTCPHeader()...)
+
+	completeTCPPacket := append(buildEthernetHeader(), packet.buildIPHeader()...)
+	completeTCPPacket = append(completeTCPPacket, packet.buildTCPHeader()...)
 	completeTCPPacket = append(completeTCPPacket, data...)
 
 	return completeTCPPacket
