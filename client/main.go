@@ -2,24 +2,22 @@ package main
 
 import (
 	"client/pkg/packet"
+	"fmt"
 )
 
 func main() {
-	nonsocket()
-}
+	destHost := "127.0.0.1"
+	destPort := 8080
 
-func nonsocket() {
+	srcHost := destHost
 	srcPort := 25566
 
-	ipAddress := "127.0.0.1"
-	port := 8080
-
-	data := "GET HTTP/1.0\r\n" +
-		"Host: 127.0.0.1" +
-		"Content-Type: text/html; charset=utf-8\r\n" +
+	data := "GET / HTTP/1.1\r\n" +
+		"Host: 127.0.0.1:8080" +
+		"User-Agent: go-client\r\n" +
+		"Accept: */*\r\n" +
 		"\r\n"
 
-	for {
-		packet.SendPacketSocket(ipAddress, uint16(port), uint16(srcPort), []byte(data))
-	}
+	response := packet.SendTCPData(destHost, destPort, srcHost, srcPort, []byte(data))
+	fmt.Println(string(response))
 }
