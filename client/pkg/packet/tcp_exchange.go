@@ -42,31 +42,20 @@ func SendTCPData(destHost string, destPort int, srcHost string, srcPort int, dat
 }
 
 func (pe *PacketExchange) tcpHandshake() (int, int) {
-	flags := []string{"syn"}
 	emptyData := make([]byte, 0)
+	sequence := 0
+	ack := 0
 
-	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, 0, 0, flags, 0, emptyData)
+	packet := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, ack, []string{"syn"}, 0, emptyData)
 
-	if err := pe.sendPacket(packet); err != nil {
-		log.Printf("error sending packet: %v", err)
-	}
-
-	if err := pe.receive(); err != nil {
-		log.Printf("error receiving: %v", err)
-	}
-
-	return 0, 0
-}
-
-func (pe *PacketExchange) sendPacket(packet []byte) error {
 	socket, err := syscall.Socket(syscall.AF_INET, syscall.SOCK_RAW, syscall.IPPROTO_TCP)
 	if err != nil {
-		return fmt.Errorf("sendPacket -> syscall.Socket: %s", err)
+		log.Printf("sendPacket -> syscall.Socket: %s", err)
 	}
 
 	err = syscall.SetsockoptInt(socket, syscall.IPPROTO_IP, syscall.IP_HDRINCL, 1)
 	if err != nil {
-		return fmt.Errorf("sendPacket -> syscall.SetsockoptInt: %s", err)
+		log.Printf("sendPacket -> syscall.SetsockoptInt: %s", err)
 	}
 
 	addr := &syscall.SockaddrInet4{
@@ -78,137 +67,37 @@ func (pe *PacketExchange) sendPacket(packet []byte) error {
 	fmt.Printf("% X\n", packet)
 	err = syscall.Sendto(socket, packet, 0, addr)
 	if err != nil {
-		return fmt.Errorf("sendPacket -> syscall.Sendto: %s", err)
+		log.Printf("sendPacket -> syscall.Sendto: %s", err)
+	}
+
+	buf := make([]byte, 1024)
+	size, from, err := syscall.Recvfrom(socket, buf, 0)
+	if err != nil {
+		log.Printf("sendPacket -> syscall.Recvfrom: %s", err)
+	}
+	fmt.Println(size)
+	fmt.Println(from)
+
+	sequence = sequence + 1
+
+	ipHeader := unmarshalIPHeader(buf)
+	tcpHeader := unmarshalTCPHeader(ipHeader.Data)
+
+	packet2 := BuildTCPPacket(pe.DestHost, pe.DestPort, pe.SrcHost, pe.SrcPort, sequence, int(tcpHeader.SequenceNumber), []string{"ack"}, 0, emptyData)
+	fmt.Printf("Sending to %v:%v\n", addr.Addr, addr.Port)
+	fmt.Printf("% X\n", packet)
+	err = syscall.Sendto(socket, packet2, 0, addr)
+	if err != nil {
+		log.Printf("sendPacket -> syscall.Sendto: %s", err)
 	}
 
 	err = syscall.Close(socket)
 	if err != nil {
-		return fmt.Errorf("sendPacket -> syscall.Close: %s", err)
+		log.Printf("sendPacket -> syscall.Close: %s", err)
 	}
 
-	return nil
+	return 0, 0
 }
-
-func (pe *PacketExchange) receive() error {
-	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
-	if err != nil {
-		return fmt.Errorf("receive -> syscall.Socket: %s", err)
-	}
-
-	// if err := syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 1073741824); err != nil {
-	// 	return fmt.Errorf("receive -> syscall.SetsockoptInt: %s", err)
-	// }
-
-	netIFace, err := net.InterfaceByName("eth0")
-	if err != nil {
-		return fmt.Errorf("receive -> net.InterfaceByName: %s", err)
-	}
-
-	var haddr [8]byte
-	copy(haddr[0:7], netIFace.HardwareAddr[0:7])
-
-	addr := syscall.SockaddrLinklayer{
-		Protocol: syscall.ETH_P_IP,
-		Ifindex:  netIFace.Index,
-		Halen:    uint8(len(netIFace.HardwareAddr)),
-		Addr:     haddr,
-	}
-
-	// probably need to bind to device here instead
-	if err := syscall.Bind(socket, &addr); err != nil {
-		return fmt.Errorf("receive -> syscall.Bind: %s", err)
-	}
-
-	// if err := syscall.SetLsfPromisc("eth0", true); err != nil {
-	// 	return fmt.Errorf("receive -> ")
-	// }
-
-	return nil
-}
-
-// func (pe *PacketExchange) receiveResponse() (int, []byte, error) {
-// 	socket, err := syscall.Socket(syscall.AF_PACKET, syscall.SOCK_RAW, syscall.ETH_P_ALL)
-// 	if err != nil {
-// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Socket: %s", err)
-// 	}
-
-// 	err = syscall.SetsockoptInt(socket, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 56789)
-// 	if err != nil {
-// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.SetsockoptInt: %s", err)
-// 	}
-
-// 	addr := &syscall.SockaddrInet4{
-// 		Port: pe.SrcPort,
-// 		Addr: to4byte(pe.SrcHost),
-// 	}
-// 	err = syscall.Bind(socket, addr)
-// 	if err != nil {
-// 		return 0, []byte{}, fmt.Errorf("receiveResponse -> syscall.Bind: %s", err)
-// 	}
-
-// 	var tcpHeader *TCPHeader
-// 	seqDataChan := make(chan map[string]struct {
-// 		SeqNum int
-// 		Data   []byte
-// 	}, 1)
-
-// 	go func() {
-// 		for {
-// 			buf := make([]byte, 1024)
-// 			numRead, _, err := syscall.Recvfrom(socket, buf, 0)
-// 			if err != nil {
-// 				log.Fatalf("receiveResponse -> syscall.Recvfrom: %s", err)
-// 			}
-
-// 			fmt.Printf("% X\n", buf[numRead:])
-
-// 			ipData := buf[:]
-// 			ipHeader := unmarshalIPHeader(ipData)
-// 			if validPacket := ipHeader.validateTcpPacket(); !validPacket {
-// 				log.Fatal("receiveResponse -> `Not a valid TCP packet")
-// 			}
-
-// 			tcpHeader = unmarshalTCPHeader(ipHeader.Data)
-
-// 			sourceAddress := ipByteToString(ipHeader.SourceAddress)
-// 			fmt.Printf("Source Address: %s\n", ipHeader.sAddr)
-// 			fmt.Printf("Source Port: %v\n", tcpHeader.SourcePort)
-
-// 			fmt.Printf("Destination Address: %s\n", ipHeader.dAddr)
-// 			fmt.Printf("Destination Port: %v\n", tcpHeader.DestinationPort)
-// 			fmt.Printf("Data: %v\n", tcpHeader.Data)
-
-// 			if validated := pe.validateSource(sourceAddress, int(tcpHeader.DestinationPort)); validated {
-// 				seqDataChan <- map[string]struct {
-// 					SeqNum int
-// 					Data   []byte
-// 				}{
-// 					"Result": {
-// 						SeqNum: int(tcpHeader.SequenceNumber),
-// 						Data:   tcpHeader.Data,
-// 					},
-// 				}
-// 			}
-// 		}
-// 	}()
-
-// 	var seqNum int
-// 	var data []byte
-// 	ticker := time.NewTicker(30 * time.Second)
-// 	for {
-// 		select {
-// 		case <-ticker.C:
-// 			return 0, []byte{}, fmt.Errorf("Timed out waiting for function")
-
-// 		case resp := <-seqDataChan:
-// 			result := resp["Result"]
-// 			seqNum = result.SeqNum
-// 			data = result.Data
-
-// 			return seqNum, data, nil
-// 		}
-// 	}
-// }
 
 func (pe *PacketExchange) validateSource(sourceAddress string, destinationPort int) bool {
 	if sourceAddress == pe.DestHost {
